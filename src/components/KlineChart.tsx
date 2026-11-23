@@ -1,7 +1,7 @@
 /** klinecharts v9.8 封装：K线主图 + 成交量 + MA + 画线 + 买卖点标记 */
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import {
-  init, dispose, LineType, OverlayMode, PolygonType, TooltipShowRule, TooltipShowType,
+  init, dispose, registerOverlay, LineType, OverlayMode, PolygonType, TooltipShowRule, TooltipShowType,
   type Chart, type OverlayEvent, type CandleTooltipCustomCallbackData,
 } from 'klinecharts'
 import type { Kline, Trade } from '@shared/types'
@@ -12,7 +12,7 @@ export const DRAW_TOOLS: { key: string; label: string }[] = [
   { key: 'segment', label: '趋势线' },
   { key: 'horizontalStraightLine', label: '水平线' },
   { key: 'priceChannelLine', label: '平行通道' },
-  { key: 'rect', label: '矩形框' },
+  { key: 'rectBox', label: '矩形框' },
   { key: 'fibonacciLine', label: '斐波那契' },
   { key: 'measure', label: '测距' },
   { key: 'text', label: '文字' },
@@ -44,6 +44,7 @@ interface Props {
   upColor?: 'red' | 'green'
   blindMode?: boolean          // 盲训：隐藏一切日期信息（x轴刻度/十字光标/tooltip）
   maPeriods?: number[]         // 启用的 MA 周期（如 [5,20,60,120]）
+  showMacd?: boolean            // MACD 副图开关（默认关）
   onOverlaySelected?: (id: string | null) => void  // 画线选中/取消选中
 }
 
@@ -51,6 +52,41 @@ const MA_COLORS = ['#ffb84d', '#4f7cff', '#c47aff', '#38b478']
 const MA_LINE = (color: string) => ({
   style: LineType.Solid, size: 1, color, dashedValue: [2, 2], smooth: false,
 })
+
+// v9.8 无内置矩形 overlay，自定义注册（两点定界、半透明填充不挡K线）
+let rectRegistered = false
+function ensureRectOverlay() {
+  if (rectRegistered) return
+  registerOverlay({
+    name: 'rectBox',
+    totalStep: 3,
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: true,
+    needDefaultYAxisFigure: true,
+    createPointFigures: ({ coordinates }) => {
+      const a = coordinates[0]
+      const b = coordinates[1]
+      if (!a || !b) return []
+      return [{
+        type: 'rect',
+        attrs: {
+          x: Math.min(a.x, b.x) - 4,
+          y: Math.min(a.y, b.y) - 4,
+          width: Math.abs(a.x - b.x) + 8,
+          height: Math.abs(a.y - b.y) + 8,
+        },
+        styles: {
+          style: PolygonType.StrokeFill,
+          color: 'rgba(79, 124, 255, 0.10)',
+          borderColor: '#4f7cff',
+          borderSize: 1,
+          borderRadius: 2,
+        },
+      }]
+    },
+  })
+  rectRegistered = true
+}
 
 const KlineChart = forwardRef<KlineChartHandle, Props>(function KlineChart(props, ref) {
   const boxRef = useRef<HTMLDivElement>(null)
@@ -68,6 +104,7 @@ const KlineChart = forwardRef<KlineChartHandle, Props>(function KlineChart(props
   // ---- 初始化（一次） ----
   useEffect(() => {
     if (!boxRef.current) return
+    ensureRectOverlay()
     const chart = init(boxRef.current, {
       styles: {
         grid: { horizontal: { color: '#1e2636' }, vertical: { color: '#1e2636' } },
@@ -182,6 +219,17 @@ const KlineChart = forwardRef<KlineChartHandle, Props>(function KlineChart(props
       onDeselected,
     })
   }, [props.activeTool])
+
+  // ---- MACD 副图开关（v9.8 移除 pane 最后一个指标会自动删 pane，无残留空白） ----
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    if (props.showMacd) {
+      chart.createIndicator('MACD', false, { id: 'macd_pane' })
+    } else {
+      chart.removeIndicator('macd_pane', 'MACD')
+    }
+  }, [props.showMacd])
 
   // ---- MA 周期切换（重建指标，每条线配色区分） ----
   useEffect(() => {

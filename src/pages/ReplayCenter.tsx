@@ -173,6 +173,8 @@ function ReplayPlayer({ sessionId, onExit, go }: { sessionId: number; onExit: ()
   const [pos, setPos] = useState(0)          // 当前展示到的索引（含上下文）
   const [freq, setFreq] = useState<'D' | 'W'>('D')
   const [auto, setAuto] = useState(false)
+  const [maPeriods, setMaPeriods] = useState<number[]>([5, 20, 60, 120])
+  const [showMacd, setShowMacd] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -232,7 +234,25 @@ function ReplayPlayer({ sessionId, onExit, go }: { sessionId: number; onExit: ()
           <option value="W">周 K</option>
         </select>
       </div>
-      <div style={{ height: 'calc(100% - 110px)', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ height: 'calc(100% - 148px)', display: 'flex', flexDirection: 'column' }}>
+        <div className="draw-toolbar">
+          {[5, 20, 60, 120].map((p) => (
+            <button
+              key={p}
+              className={maPeriods.includes(p) ? 'on' : ''}
+              onClick={() =>
+                setMaPeriods((prev) =>
+                  prev.includes(p) ? prev.filter((v) => v !== p) : [...prev, p].sort((a, b) => a - b),
+                )
+              }
+            >
+              MA{p}
+            </button>
+          ))}
+          <button className={showMacd ? 'on' : ''} onClick={() => setShowMacd((v) => !v)}>
+            MACD
+          </button>
+        </div>
         <KlineChart
           klines={shown}
           freq={freq}
@@ -240,6 +260,8 @@ function ReplayPlayer({ sessionId, onExit, go }: { sessionId: number; onExit: ()
           trades={shownTrades}
           activeTool={null}
           overlays={data.drawings as SavedOverlay[]}
+          maPeriods={maPeriods}
+          showMacd={showMacd}
         />
       </div>
       <div className="bottom-bar" style={{ marginLeft: -24, marginRight: -24 }}>

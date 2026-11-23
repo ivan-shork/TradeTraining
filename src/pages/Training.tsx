@@ -43,6 +43,7 @@ export default function Training({ route, go }: Props) {
   const [toast, setToast] = useState<string | null>(null)
   const [blind, setBlind] = useState(true)   // 盲训：默认遮蔽标的与日期，防"看名字猜行情"
   const [maPeriods, setMaPeriods] = useState<number[]>([5, 20, 60, 120])
+  const [showMacd, setShowMacd] = useState(false)
   const startedAt = useRef(Date.now())
   const lastStepAt = useRef(0)
   const klinesRef = useRef(route.klines)
@@ -210,6 +211,13 @@ export default function Training({ route, go }: Props) {
                 MA{p}
               </button>
             ))}
+            <button
+              className={showMacd ? 'on' : ''}
+              onClick={() => setShowMacd((v) => !v)}
+              title="成交量下方增加 MACD 副图"
+            >
+              MACD
+            </button>
             <span style={{ width: 10 }} />
             {DRAW_TOOLS.map((t) => (
               <button key={t.key} className={tool === t.key ? 'on' : ''}
@@ -237,6 +245,7 @@ export default function Training({ route, go }: Props) {
             upColor={settings?.upColor ?? 'red'}
             blindMode={blind}
             maPeriods={maPeriods}
+            showMacd={showMacd}
           />
           {lookback > 0 && (
             <div className="pending-tip" style={{ marginTop: 8 }}>
