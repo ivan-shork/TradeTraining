@@ -650,7 +650,8 @@ export function finish(sessionId: number): Settlement | { error: string } {
     buyCount: buys.length, sellCount: sells.length, winRate,
     profitLossRatio: plr === -1 ? -1 : +plr.toFixed(2),
     avgHoldingDays: +avgHold.toFixed(1), noteCompleteRate: noteRate, tagDist,
-    matchModel: session.matchModel, settledAt, equityCurve: equity as Settlement['equityCurve'],
+    matchModel: session.matchModel, settledAt, starred: 0, note: '',
+    equityCurve: equity as Settlement['equityCurve'],
   }
   db.prepare(`
     INSERT OR REPLACE INTO settlements (session_id, code, name, category, start_date, end_date,
@@ -687,8 +688,29 @@ function hydrateSettlement(r: any): Settlement {
     winRate: r.win_rate, profitLossRatio: r.profit_loss_ratio,
     avgHoldingDays: r.avg_holding_days, noteCompleteRate: r.note_complete_rate,
     tagDist: JSON.parse(r.tag_dist ?? '{}'), matchModel: r.match_model,
-    settledAt: r.settled_at, equityCurve: JSON.parse(r.equity_curve ?? '[]'),
+    settledAt: r.settled_at,
+    starred: r.starred ?? 0, note: r.note ?? '',
+    equityCurve: JSON.parse(r.equity_curve ?? '[]'),
   }
+}
+
+/** 星标/取消星标 */
+export function setStarred(sessionId: number, value: boolean): void {
+  const db = getDb()
+  db.prepare(`UPDATE settlements SET starred = ? WHERE session_id = ?`).run(value ? 1 : 0, sessionId)
+}
+
+/** 读取整局复盘笔记 */
+export function getSessionNote(sessionId: number): string {
+  const db = getDb()
+  const r = db.prepare(`SELECT note FROM settlements WHERE session_id = ?`).get(sessionId) as { note: string | null } | undefined
+  return r?.note ?? ''
+}
+
+/** 保存整局复盘笔记 */
+export function saveSessionNote(sessionId: number, text: string): void {
+  const db = getDb()
+  db.prepare(`UPDATE settlements SET note = ? WHERE session_id = ?`).run(text ?? '', sessionId)
 }
 
 export function listSettlements(): Settlement[] {

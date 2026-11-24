@@ -151,6 +151,10 @@ export interface Settlement {
   tagDist: Record<string, number>
   matchModel: MatchModel
   settledAt: string
+  /** 星标（重要局收藏） */
+  starred: number
+  /** 整局复盘笔记（回放时对照 K 线撰写） */
+  note: string
   /** 资金曲线与买卖持有基准（复算用） */
   equityCurve: { date: string; asset: number; benchmark: number }[]
 }

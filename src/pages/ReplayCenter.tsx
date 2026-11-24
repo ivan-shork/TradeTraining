@@ -1,6 +1,7 @@
 /** 复盘中心（需求 5.7 一期轻量版）：记录列表 + 基础统计 + 单局回放 */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import KlineChart, { type SavedOverlay } from '../components/KlineChart'
+import FloatingNote from '../components/FloatingNote'
 import { call } from '../api'
 import type { Kline, Session, Settlement, Trade } from '@shared/types'
 import { fmtDisp } from '@shared/kline'
@@ -29,6 +30,7 @@ export default function ReplayCenter({ go }: Props) {
   const [filterCat, setFilterCat] = useState('all')
   const [filterPnl, setFilterPnl] = useState('all')
   const [filterNote, setFilterNote] = useState('all')
+  const [filterStar, setFilterStar] = useState(false)
   const [replayId, setReplayId] = useState<number | null>(null)
 
   const refresh = async () => {
@@ -44,14 +46,20 @@ export default function ReplayCenter({ go }: Props) {
     refresh()
   }
 
+  const toggleStar = async (s: Settlement) => {
+    await call('replay:star', { sessionId: s.sessionId, value: !s.starred })
+    setList((prev) => prev.map((x) => x.sessionId === s.sessionId ? { ...x, starred: s.starred ? 0 : 1 } : x))
+  }
+
   const filtered = useMemo(() => list.filter((s) => {
+    if (filterStar && !s.starred) return false
     if (filterCat !== 'all' && s.category !== filterCat) return false
     if (filterPnl === 'win' && s.pnlAmount <= 0) return false
     if (filterPnl === 'loss' && s.pnlAmount > 0) return false
     if (filterNote === 'yes' && s.noteCompleteRate === 0) return false
     if (filterNote === 'no' && s.noteCompleteRate > 0) return false
     return true
-  }), [list, filterCat, filterPnl, filterNote])
+  }), [list, filterCat, filterPnl, filterNote, filterStar])
 
   if (replayId !== null) {
     return <ReplayPlayer sessionId={replayId} onExit={() => { setReplayId(null); refresh() }} go={go} />
@@ -126,17 +134,29 @@ export default function ReplayCenter({ go }: Props) {
             <option value="yes">写了备注</option>
             <option value="no">没写备注</option>
           </select>
+          <button
+            className={filterStar ? 'on' : ''}
+            onClick={() => setFilterStar(!filterStar)}
+            title="只显示星标局"
+          >
+            ★ 仅星标
+          </button>
         </div>
         <table className="records">
           <thead>
             <tr>
-              <th>结算时间</th><th>标的</th><th>类型</th><th>区间</th><th>交易日</th>
+              <th>★</th><th>结算时间</th><th>标的</th><th>类型</th><th>区间</th><th>交易日</th>
               <th>收益率</th><th>区间涨幅</th><th>超额</th><th>交易</th><th>备注率</th><th></th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((s) => (
               <tr key={s.sessionId}>
+                <td>
+                  <button className={`star-btn${s.starred ? ' on' : ''}`} onClick={() => toggleStar(s)} title={s.starred ? '取消星标' : '标记为重要局'}>
+                    {s.starred ? '★' : '☆'}
+                  </button>
+                </td>
                 <td>{s.settledAt.slice(0, 10)}</td>
                 <td>{s.name}<br /><span style={{ color: 'var(--text-dim)', fontSize: 11 }}>{s.code}</span></td>
                 <td><span className="tag">{catLabel[s.category]}</span></td>
@@ -154,7 +174,7 @@ export default function ReplayCenter({ go }: Props) {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={11} style={{ color: 'var(--text-dim)', textAlign: 'center', padding: 20 }}>暂无记录</td></tr>
+              <tr><td colSpan={12} style={{ color: 'var(--text-dim)', textAlign: 'center', padding: 20 }}>暂无记录</td></tr>
             )}
           </tbody>
         </table>
@@ -175,6 +195,8 @@ function ReplayPlayer({ sessionId, onExit, go }: { sessionId: number; onExit: ()
   const [auto, setAuto] = useState(false)
   const [maPeriods, setMaPeriods] = useState<number[]>([5, 20, 60, 120])
   const [showMacd, setShowMacd] = useState(false)
+  const [noteOpen, setNoteOpen] = useState(false)
+  const [noteText, setNoteText] = useState('')
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -183,6 +205,7 @@ function ReplayPlayer({ sessionId, onExit, go }: { sessionId: number; onExit: ()
       setFreq(d.session.freqDefault)
       setPos(d.session.contextBars + 1)
     })
+    call<string>('replay:note:get', sessionId).then(setNoteText)
   }, [sessionId])
 
   // 自动播放
@@ -228,6 +251,13 @@ function ReplayPlayer({ sessionId, onExit, go }: { sessionId: number; onExit: ()
         <span className="title">{s.name} {s.code} · 回放</span>
         <span className="meta">{fmtDisp(s.startDate)} 起 · {pos - s.contextBars}/{data.klines.length - s.contextBars} 步</span>
         <span style={{ flex: 1 }} />
+        <button
+          className={noteOpen ? 'on' : ''}
+          onClick={() => setNoteOpen((v) => !v)}
+          title="打开可拖动笔记浮窗，边播放边写复盘"
+        >
+          📝 备注
+        </button>
         <span className="tag">前复权</span>
         <select value={freq} onChange={(e) => setFreq(e.target.value as 'D' | 'W')}>
           <option value="D">日 K</option>
@@ -287,6 +317,18 @@ function ReplayPlayer({ sessionId, onExit, go }: { sessionId: number; onExit: ()
           </span>
         ))}
       </div>
+      {/* 可拖动复盘笔记浮窗（悬浮于面板之上，边播放边写） */}
+      {noteOpen && (
+        <FloatingNote
+          initialText={noteText}
+          title={`${data.session.name} · 本局笔记`}
+          onSave={(text) => {
+            setNoteText(text)
+            call('replay:note:save', { sessionId, text }).catch(() => {})
+          }}
+          onClose={() => setNoteOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -294,6 +336,8 @@ function ReplayPlayer({ sessionId, onExit, go }: { sessionId: number; onExit: ()
 function ReplayKeys({ onStep }: { onStep: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return  // 笔记浮窗输入时不步进
       if (e.code === 'Space') { e.preventDefault(); onStep() }
     }
     window.addEventListener('keydown', onKey)

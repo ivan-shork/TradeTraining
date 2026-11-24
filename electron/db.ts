@@ -146,5 +146,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value TEXT NOT NULL
 );
 `)
+  // 增量迁移：旧库补列（已存在则忽略）
+  try { db.exec(`ALTER TABLE settlements ADD COLUMN starred INTEGER DEFAULT 0`) } catch { /* 已有 */ }
+  try { db.exec(`ALTER TABLE settlements ADD COLUMN note TEXT DEFAULT ''`) } catch { /* 已有 */ }
   return db
 }

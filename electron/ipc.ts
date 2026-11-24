@@ -11,6 +11,7 @@ import {
   estimatePool, startSession, stepSession, placeOrder, finish,
   listSettlements, getSettlement, getReplayData, exportCsv,
   getSession, getState, getSessionTrades, deleteSessionData, currentCapital,
+  setStarred, getSessionNote, saveSessionNote,
 } from './engine'
 import type { AppSettings, SessionConfig, OrderRequest } from '../shared/types'
 
@@ -127,6 +128,15 @@ export function registerAllIpc(ipcMain: IpcMain) {
   handle('replay:get', (id: number) => getSettlement(id))
   handle('replay:delete', (id: number) => {
     deleteSessionData(id)
+    return true
+  })
+  handle('replay:star', (p: { sessionId: number; value: boolean }) => {
+    setStarred(p.sessionId, p.value)
+    return true
+  })
+  handle('replay:note:get', (id: number) => getSessionNote(id))
+  handle('replay:note:save', (p: { sessionId: number; text: string }) => {
+    saveSessionNote(p.sessionId, p.text)
     return true
   })
   handle('capital:current', () => currentCapital())
